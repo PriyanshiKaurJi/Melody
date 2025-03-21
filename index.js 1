@@ -1,0 +1,246 @@
+const chalk = require('chalk');
+const figlet = require('figlet');
+const os = require('os');
+const cluster = require('cluster');
+const express = require('express');
+const http = require('http');
+const path = require('path');
+const fs = require('fs');
+
+const isProduction = process.env.NODE_ENV === 'production';
+const isCloudEnvironment = process.env.CLOUD_PLATFORM ||
+  process.env.AWS_REGION ||
+  process.env.GOOGLE_CLOUD_PROJECT ||
+  process.env.AZURE_REGION ||
+  process.env.RENDER || false;
+
+if (isProduction) {
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    if (isCloudEnvironment) {
+      console.error(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        error: err.toString(),
+        stack: err.stack
+      }));
+    }
+    process.exit(1);
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  });
+}
+
+const getTerminalWidth = () => {
+  if (isCloudEnvironment || process.env.CI) return 80;
+  try {
+    return process.stdout.columns || 80;
+  } catch (e) {
+    return 80;
+  }
+};
+
+const isTTY = process.stdout.isTTY;
+
+function displayBanner() {
+  if (!isTTY && isProduction) {
+    console.log('Mitski - WhatsApp Chat Bot starting...');
+    return;
+  }
+
+  const terminalWidth = getTerminalWidth();
+
+  if (!isProduction && isTTY) {
+    console.clear();
+    console.log('\n'.repeat(2));
+  }
+
+  const line = chalk.bold.rgb(255, 165, 0)('─'.repeat(terminalWidth));
+  const spectraText = figlet.textSync('Mitski', {
+    font: 'Small',
+    horizontalLayout: 'default',
+    verticalLayout: 'default',
+    width: terminalWidth,
+    whitespaceBreak: true
+  });
+
+  console.log(line);
+  console.log(chalk.blueBright(spectraText));
+  console.log(chalk.cyan.bold(' Mitski - A Simple WhatsApp Chat Bot'));
+  console.log(chalk.magenta('    Created By Mr - Perfect with ❤️'));
+  console.log(chalk.yellow.bold('Source Code: '));
+  console.log(line);
+  console.log(chalk.red.bold('\n⚠️  WARNING: Do not attempt to claim this project as your own, modify the author, or remove credits.\n'));
+  console.log(line);
+
+  if (!isProduction) {
+    console.log(chalk.gray('\nEnvironment Information:'));
+    console.log(chalk.gray(`Node.js: ${process.version}`));
+    console.log(chalk.gray(`Platform: ${process.platform}`));
+    console.log(chalk.gray(`Memory: ${Math.round(os.totalmem() / 1024 / 1024 / 1024)} GB`));
+    console.log(chalk.gray(`CPUs: ${os.cpus().length}`));
+
+    if (isCloudEnvironment) {
+      console.log(chalk.gray('Running in cloud environment'));
+    }
+    console.log('');
+  }
+}
+
+function setupExpressServer() {
+  const app = express();
+  const PORT = process.env.PORT || 3000;
+
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  app.get('/', (req, res) => {
+    res.send(`
+      <html>
+        <head>
+          <title>Mitski WhatsApp Bot</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; text-align: center; }
+            h1 { color: #4a86e8; }
+            .status { padding: 10px; background: #e6f4ea; border-radius: 4px; margin: 20px 0; }
+            .footer { margin-top: 30px; font-size: 12px; color: #666; }
+          </style>
+        </head>
+        <body>
+          <h1>Mitski WhatsApp Bot</h1>
+          <div class="status">
+            <p>Server is running</p>
+            <p>Status: Online</p>
+            <p>Worker ID: ${process.pid}</p>
+          </div>
+          <div class="footer">
+            Created By Mr - Perfect with ❤️
+          </div>
+        </body>
+      </html>
+    `);
+  });
+
+  app.get('/health', (req, res) => res.status(200).json({ status: 'healthy', uptime: process.uptime() }));
+
+  app.get('/api/info', (req, res) => {
+    res.json({
+      name: 'Mitski WhatsApp Bot',
+      version: process.env.npm_package_version || '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      memory: process.memoryUsage(),
+      cpu: os.cpus().length,
+      platform: process.platform,
+      uptime: process.uptime()
+    });
+  });
+
+  const server = http.createServer(app);
+
+  server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+  const shutdownGracefully = () => {
+    console.log('Received shutdown signal, closing server...');
+    server.close(() => {
+      console.log('Server closed, exiting process');
+      process.exit(0);
+    });
+
+    setTimeout(() => {
+      console.error('Could not close connections in time, forcefully shutting down');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', shutdownGracefully);
+  process.on('SIGINT', shutdownGracefully);
+
+  return server;
+}
+
+function startBotLogic() {
+  fs.writeFileSync(path.join(__dirname, 'bot-status.json'), JSON.stringify({
+    status: 'online',
+    startTime: new Date().toISOString(),
+    pid: process.pid
+  }));
+
+  const checkHealth = setInterval(() => {
+    const memoryUsage = process.memoryUsage();
+    const memoryThreshold = 1.5 * 1024 * 1024 * 1024;
+
+    if (memoryUsage.rss > memoryThreshold) {
+      console.warn('Memory usage high, considering restart');
+      if (isProduction) {
+        console.log('Restarting due to high memory usage');
+        process.exit(1);
+      }
+    }
+  }, 60000);
+
+  process.on('exit', () => {
+    clearInterval(checkHealth);
+    try {
+      fs.unlinkSync(path.join(__dirname, 'bot-status.json'));
+    } catch (e) {}
+  });
+}
+
+function monitorCluster() {
+  const clusterStats = {
+    startTime: new Date(),
+    totalRestarts: 0,
+    workers: {}
+  };
+
+  cluster.on('fork', (worker) => {
+    clusterStats.workers[worker.id] = {
+      id: worker.id,
+      pid: worker.process.pid,
+      startTime: new Date()
+    };
+    console.log(`Worker ${worker.process.pid} started`);
+  });
+
+  cluster.on('exit', (worker, code, signal) => {
+    clusterStats.totalRestarts++;
+    console.log(`Worker ${worker.process.pid} died (${signal || code}). Restarting...`);
+    cluster.fork();
+  });
+
+  setInterval(() => {
+    console.log(`Cluster status: ${Object.keys(cluster.workers).length} active workers, ${clusterStats.totalRestarts} total restarts`);
+  }, 300000);
+}
+
+async function initialize() {
+  displayBanner();
+
+  if (isProduction && cluster.isPrimary) {
+    const numCPUs = os.cpus().length;
+    const workerCount = isCloudEnvironment ? Math.min(numCPUs, parseInt(process.env.MAX_WORKERS || '4', 10)) : numCPUs;
+
+    console.log(`Primary ${process.pid} is running`);
+    console.log(`Launching ${workerCount} workers...`);
+
+    for (let i = 0; i < workerCount; i++) cluster.fork();
+    monitorCluster();
+    return;
+  }
+
+  if (cluster.isWorker || !isProduction) {
+    console.log(`Worker ${process.pid} started`);
+    setupExpressServer();
+    startBotLogic();
+  }
+}
+
+if (require.main === module) {
+  initialize().catch(err => {
+    console.error('Failed to initialize:', err);
+    process.exit(1);
+  });
+} else {
+  module.exports = { initialize };
+}

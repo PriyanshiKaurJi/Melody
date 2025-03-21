@@ -1,0 +1,64 @@
+{
+  "whatsappAccount": {
+    "phoneNumber": "919770202327",
+    "sessionPath": "./auth/session",
+    "qrTimeout": 60,
+    "multiDevice": true
+  },
+  "botSettings": {
+    "botName": "Mitski",
+    "prefix": ".",
+    "ownerNumber": "",
+    "language": "en",
+    "timeZone": "Asia/Kolkata"
+  },
+  "database": {
+    "type": "sqlite",
+    "uriMongodb": "",
+    "autoSyncWhenStart": false
+  },
+  "adminOnly": {
+    "enable": false,
+    "adminNumbers": [
+      "919770202327",
+      ""
+    ]
+  },
+  "whiteListMode": {
+    "enable": false,
+    "allowedNumbers": [
+      "",
+      ""
+    ]
+  },
+  "messageHandling": {
+    "autoRead": false,
+    "deleteCommandMessages": false,
+    "logMessages": true,
+    "selflisten": true
+  },
+  "antiSpam": {
+    "enable": true,
+    "cooldownTime": 5
+  },
+  "webhooks": {
+    "enable": false,
+    "url": ""
+  },
+  "serverUptime": {
+    "enable": true,
+    "port": 3001
+  },
+  "autoRestart": {
+    "enable": false,
+    "time": null
+  },
+  "notifications": {
+    "enable": false
+  },
+  "logEvents": {
+    "enable": true,
+    "logErrors": true,
+    "logCommands": true
+  }
+}
